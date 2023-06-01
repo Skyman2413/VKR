@@ -1,9 +1,10 @@
-import './App.css';
+import './styles/App.css';
 import {AuthContext} from "./context";
 import {useState, useEffect} from "react";
 import {BrowserRouter, Link, Route} from "react-router-dom";
 import About from "./pages/About";
 import Navbar from "./components/UI/Navbar/Navbar";
+import AppRouter from "./components/AppRouter";
 
 function App() {
     const [isAuth, setIsAuth] = useState(false)
@@ -21,8 +22,8 @@ function App() {
         setIsAuth
     }}>
         <BrowserRouter>
-            <Navbar></Navbar>
-
+            <Navbar/>
+            <AppRouter/>
         </BrowserRouter>
     </AuthContext.Provider>
   );

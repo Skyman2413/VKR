@@ -3,7 +3,7 @@ import Login from "../pages/Login";
 
 
 export const privateRoutes = [
-    {path: '/grades', component: Grades, exact: true}
+    {path: '/grades', component: About, exact: true}
 ]
 export const publicRoutes = [
         {path: '/login', component: Login, exact: true}

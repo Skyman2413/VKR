@@ -54,15 +54,15 @@ async def jwt_middleware(request, handler):
 @routes.post('/auth')
 async def post_auth(request):
     postgres_pool = request.app['postgres']
-    conn = await asyncpg.connect('postgresql://user:password@localhost/database')
     metadata = await request.json()
     login = metadata['login']
-    student = await conn.fetchrow(
-        'SELECT password_hash, id FROM vkr_schema.students WHERE login = $1', login)
-    teacher = await conn.fetchrow(
-        'SELECT password_hash, id FROM vkr_schema.teachers WHERE login = $1', login)
-    parent = await conn.fetchrow(
-        'SELECT password_hash, id FROM vkr_schema.parents WHERE login = $1', login)
+    async with postgres_pool.acquire() as postgres_conn:
+        student = await postgres_conn.fetchrow(
+            'SELECT password_hash, id FROM vkr_schema.students WHERE login = $1', login)
+        teacher = await postgres_conn.fetchrow(
+            'SELECT password_hash, id FROM vkr_schema.teachers WHERE login = $1', login)
+        parent = await postgres_conn.fetchrow(
+            'SELECT password_hash, id FROM vkr_schema.parents WHERE login = $1', login)
 
     user_type = None
     password_hash = None
@@ -79,11 +79,11 @@ async def post_auth(request):
     else:
         return None, False
 
-    password_matches = bcrypt.checkpw(metadata['password'].encode('utf-8'), password_hash.encode('utf-8'))
+    password_matches = bcrypt.checkpw(metadata['password'].encode('utf-8'), password_hash)
     if password_matches:
         return web.json_response(status=200, data={
             "user_type": user_type,
-            "token": generate_token(user_id, user_type)
+            "token": await generate_token(user_id, user_type)
         })
     else:
         return web.HTTPUnauthorized()
@@ -112,7 +112,6 @@ async def get_shedule(request):
 @routes.get('/student_grades')
 async def get_student_grades(request):
     postgres_pool = request.app['postgres']
-    metadata = await request.json()
     student_id = request.user["user_id"]
     query_str = """SELECT vkr_schema.grades.date, vkr_schema.grades.grade, vkr_schema.grades.grade_type,
                    vkr_schema.subjects.subject_name as subject_name
@@ -251,8 +250,9 @@ async def put_grade_hm(request):
 
 
 async def create_lms_app():
-    app = web.Application(middlewares=[jwt_middleware])
+    app = web.Application()
     app.add_routes(routes)
+    app.middlewares.append(jwt_middleware)
 
     pool = await asyncpg.create_pool(
         host="192.168.3.16",

@@ -52,9 +52,15 @@ async def create_homework():
                 print(res.status)
                 print(await res.text())
 
+async def auth():
+    async with aiohttp.ClientSession() as session:
+        async with session.post("http://127.0.0.2:8888/auth", json={"login": "skyman", "password": "gjhnatkm"}) as res:
+            print(res.status)
+            print(await res.text())
 
 async def main():
-    await put_to_queue()
+    await auth()
+    # await put_to_queue()
     # await get_info()
     # await get_file('6')
 
