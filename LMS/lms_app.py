@@ -33,7 +33,6 @@ async def get_shedule(request):
     timetable = [row for row in result]
     return web.json_response(dict(shedule=timetable))
 
-
 @routes.get('/student_grades')
 async def get_student_grades(request):
     postgres_pool = request.app['postgres']
@@ -75,14 +74,13 @@ async def put_homework(request):
     teacher_last_name = metadata['teacher_last_name']
     subject_name = metadata['subject_name']
     group_name = metadata['group_name']
-    query_str = """INSERT INTO vkr_schema.homework (description, due_date, teacher_id, subject_id, group_id, status)
+    query_str = """INSERT INTO vkr_schema.homework (description, due_date, teacher_id, subject_id, group_id)
                     VALUES (
                         $1, 
                         $2, 
                         (SELECT id FROM vkr_schema.teachers WHERE first_name = $3 AND last_name = $4),
                         (SELECT id FROM vkr_schema.subjects WHERE subject_name = $5),
-                        (SELECT id FROM vkr_schema.groups WHERE group_name = $6),
-                        0
+                        (SELECT id FROM vkr_schema.groups WHERE group_name = $6)
                     )
                     RETURNING id;"""
 
@@ -153,7 +151,7 @@ async def put_done_homework(request):
 
 
 @routes.put('/grade_homework')
-async def put_grade_hm(request: Request):
+async def put_grade_hm(request):
     postgres_pool = request.app['postgres']
     metadata = await request.json()
     submission_id = metadata["id"]
