@@ -8,10 +8,85 @@ import aiohttp.multipart
 import asyncpg
 import datetime
 
+import bcrypt
+import jwt
 from aiohttp import web
 from aiohttp.web_request import Request
 
 routes = web.RouteTableDef()
+
+
+async def generate_token(user_id, user_type):
+    payload = {
+        'user_id': user_id,
+        'user_type': user_type,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+    }
+    token = jwt.encode(payload, 'secret', algorithm='HS256')
+
+    return token
+
+
+async def verify_token(token):
+    try:
+        payload = jwt.decode(token, 'secret', algorithms=['HS256'])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None  # token is expired
+    except jwt.InvalidTokenError:
+        return None  # token is invalid
+
+
+@web.middleware
+async def jwt_middleware(request, handler):
+    if request.path == '/auth':
+        return await handler(request)
+
+    token = request.headers.get('Authorization', None)
+    if token is not None:
+        payload = verify_token(token)
+        if payload is not None:
+            request.user = payload
+            return await handler(request)
+    return web.HTTPUnauthorized()
+
+
+@routes.post('/auth')
+async def post_auth(request):
+    postgres_pool = request.app['postgres']
+    conn = await asyncpg.connect('postgresql://user:password@localhost/database')
+    metadata = await request.json()
+    login = metadata['login']
+    student = await conn.fetchrow(
+        'SELECT password_hash, id FROM vkr_schema.students WHERE login = $1', login)
+    teacher = await conn.fetchrow(
+        'SELECT password_hash, id FROM vkr_schema.teachers WHERE login = $1', login)
+    parent = await conn.fetchrow(
+        'SELECT password_hash, id FROM vkr_schema.parents WHERE login = $1', login)
+
+    user_type = None
+    password_hash = None
+
+    if student:
+        user_type = 'student'
+        password_hash, user_id = student
+    elif teacher:
+        user_type = 'teacher'
+        password_hash, user_id = teacher
+    elif parent:
+        user_type = 'parent'
+        password_hash, user_id = parent
+    else:
+        return None, False
+
+    password_matches = bcrypt.checkpw(metadata['password'].encode('utf-8'), password_hash.encode('utf-8'))
+    if password_matches:
+        return web.json_response(status=200, data={
+            "user_type": user_type,
+            "token": generate_token(user_id, user_type)
+        })
+    else:
+        return web.HTTPUnauthorized()
 
 
 @routes.get('/shedule')
@@ -33,15 +108,12 @@ async def get_shedule(request):
     timetable = [row for row in result]
     return web.json_response(dict(shedule=timetable))
 
+
 @routes.get('/student_grades')
 async def get_student_grades(request):
     postgres_pool = request.app['postgres']
     metadata = await request.json()
-    student_first_name = metadata['first_name']
-    student_last_name = metadata['last_name']
-    query_str = """SELECT id FROM vkr_schema.students WHERE first_name = $1 and last_name = $2"""
-    async with postgres_pool.acquire() as postgres_conn:
-        student_id = await postgres_conn.fetchval(query_str, student_first_name, student_last_name)
+    student_id = request.user["user_id"]
     query_str = """SELECT vkr_schema.grades.date, vkr_schema.grades.grade, vkr_schema.grades.grade_type,
                    vkr_schema.subjects.subject_name as subject_name
                    FROM vkr_schema.grades 
@@ -70,23 +142,22 @@ async def put_homework(request):
         field = await reader.next()
     description = metadata['description']
     due_data = datetime.datetime.strptime(metadata['due_date'], "%d.%m.%Y")
-    teacher_first_name = metadata['teacher_first_name']
-    teacher_last_name = metadata['teacher_last_name']
+    user_id = request.user["user_id"]
     subject_name = metadata['subject_name']
     group_name = metadata['group_name']
     query_str = """INSERT INTO vkr_schema.homework (description, due_date, teacher_id, subject_id, group_id)
                     VALUES (
                         $1, 
                         $2, 
-                        (SELECT id FROM vkr_schema.teachers WHERE first_name = $3 AND last_name = $4),
-                        (SELECT id FROM vkr_schema.subjects WHERE subject_name = $5),
-                        (SELECT id FROM vkr_schema.groups WHERE group_name = $6)
+                        $3,
+                        (SELECT id FROM vkr_schema.subjects WHERE subject_name = $4),
+                        (SELECT id FROM vkr_schema.groups WHERE group_name = $5)
                     )
                     RETURNING id;"""
 
     async with postgres_pool.acquire() as postgres_conn:
         id = await postgres_conn.fetchval(query_str, description, due_data,
-                                          teacher_first_name, teacher_last_name,
+                                          user_id,
                                           subject_name, group_name)
     if metadata['include']:
         field = await reader.next()
@@ -122,8 +193,8 @@ async def put_done_homework(request):
         field = await reader.next()
 
     hm_id = metadata['hm_id']
-    student_fname = metadata['student_first_name']
-    student_lname = metadata['student_last_name']
+    user_id = request.user["user_id"]
+
     field = await reader.next()
     while field:
         if field.name == 'file':
@@ -142,10 +213,10 @@ async def put_done_homework(request):
                 (homework_id, student_id, submission_date) 
                 VALUES 
                 ($1,
-                (SELECT id FROM vkr_schema.teachers WHERE first_name = $2 AND last_name = $3),
-                $4)"""
+                $2,
+                $3)"""
     async with postgres_pool.acquire() as postgres_conn:
-        await postgres_conn.fetch(query_str, hm_id, student_fname, student_lname, datetime.date.today())
+        await postgres_conn.fetch(query_str, hm_id, user_id, datetime.date.today())
 
     return web.HTTPOk()
 
@@ -180,8 +251,9 @@ async def put_grade_hm(request):
 
 
 async def create_lms_app():
-    app = web.Application()
+    app = web.Application(middlewares=[jwt_middleware])
     app.add_routes(routes)
+
     pool = await asyncpg.create_pool(
         host="192.168.3.16",
         port="5432",
