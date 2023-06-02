@@ -22,6 +22,7 @@ const Login = () => {
         setIsAuth(true);
         localStorage.setItem('auth', 'true');
         localStorage.setItem('authToken', response.data.token);
+        localStorage.setItem('userType', response.data.userType)
       } else {
         throw new Error('Ошибка авторизации');
       }

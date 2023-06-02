@@ -5,8 +5,10 @@ from pathlib import Path
 
 import aiofiles
 import aiohttp.multipart
+import aiohttp_cors
 import asyncpg
 import datetime
+from aiohttp_middlewares import cors_middleware
 
 import bcrypt
 import jwt
@@ -39,7 +41,16 @@ async def verify_token(token):
 
 @web.middleware
 async def jwt_middleware(request, handler):
+    if request.method == 'OPTIONS':
+        # Обработка предварительных запросов
+        response = web.Response()
+        response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
     if request.path == '/auth':
+        # Запрос на авторизацию не требует проверки токена
         return await handler(request)
 
     token = request.headers.get('Authorization', None)
@@ -47,15 +58,26 @@ async def jwt_middleware(request, handler):
         payload = verify_token(token)
         if payload is not None:
             request.user = payload
-            return await handler(request)
-    return web.HTTPUnauthorized()
+            # Установка заголовков CORS перед обработкой запроса
+            response = await handler(request)
+            response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            return response
+
+    # Обработка ошибки авторизации
+    response = web.HTTPUnauthorized()
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
 
 
 @routes.post('/auth')
 async def post_auth(request):
     postgres_pool = request.app['postgres']
     metadata = await request.json()
-    login = metadata['login']
+    login = metadata['username']
     async with postgres_pool.acquire() as postgres_conn:
         student = await postgres_conn.fetchrow(
             'SELECT password_hash, id FROM vkr_schema.students WHERE login = $1', login)
@@ -81,13 +103,17 @@ async def post_auth(request):
 
     password_matches = bcrypt.checkpw(metadata['password'].encode('utf-8'), password_hash)
     if password_matches:
-        return web.json_response(status=200, data={
-            "user_type": user_type,
+        response = web.json_response(status=200, data={
+            "userType": user_type,
             "token": await generate_token(user_id, user_type)
         })
-    else:
-        return web.HTTPUnauthorized()
 
+    else:
+        response = web.HTTPUnauthorized()
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
 
 @routes.get('/shedule')
 async def get_shedule(request):
@@ -253,6 +279,7 @@ async def create_lms_app():
     app = web.Application()
     app.add_routes(routes)
     app.middlewares.append(jwt_middleware)
+    app.middlewares.append(cors_middleware())
 
     pool = await asyncpg.create_pool(
         host="192.168.3.16",

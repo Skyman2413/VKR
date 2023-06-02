@@ -1,6 +1,6 @@
 import React, {useContext} from 'react';
 import {Redirect, Route, Switch} from "react-router-dom"
-import {publicRoutes, privateRoutes} from "../routes";
+import {publicRoutes, parentRoutes, teacherRoutes, studentRoutes} from "../routes";
 import {AuthContext} from "../context";
 import Loader from "./UI/Loader/Loader";
 const AppRouter = () => {
@@ -11,16 +11,47 @@ const AppRouter = () => {
     return (
         isAuth
             ?
-            <Switch>
-                {privateRoutes.map(routes =>
-                    <Route component={routes.component}
-                           path={routes.path}
-                           exact={routes.exact}
-                           key={routes.path}
-                    />
-                )}
-                <Redirect to='/home'/>
-            </Switch>
+            localStorage.getItem("userType") === "parent"
+                ?
+                <Switch>
+                    {parentRoutes.map(routes =>
+                        <Route component={routes.component}
+                               path={routes.path}
+                               exact={routes.exact}
+                               key={routes.path}
+                        />
+                    )}
+                    <Redirect to='/home'/>
+                </Switch>
+                :
+            localStorage.getItem("userType") === "teacher"
+                ?
+                <Switch>
+                    {teacherRoutes.map(routes =>
+                        <Route component={routes.component}
+                               path={routes.path}
+                               exact={routes.exact}
+                               key={routes.path}
+                        />
+                    )}
+                    <Redirect to='/home'/>
+                </Switch>
+                :
+            localStorage.getItem("userType") === "student" ?
+                <Switch>
+                    {studentRoutes.map(routes =>
+                        <Route component={routes.component}
+                               path={routes.path}
+                               exact={routes.exact}
+                               key={routes.path}
+                        />
+                    )}
+                    <Redirect to='/home'/>
+                </Switch>
+            :
+                <div>
+                    Unexcepted user type
+                </div>
             :
             <Switch>
                 {publicRoutes.map(routes =>
