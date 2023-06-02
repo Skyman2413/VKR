@@ -16,6 +16,7 @@ from aiohttp import web
 from aiohttp.web_request import Request
 
 routes = web.RouteTableDef()
+front_end_ip = 'http://localhost:3000'
 
 
 async def generate_token(user_id, user_type):
@@ -44,9 +45,7 @@ async def jwt_middleware(request, handler):
     if request.method == 'OPTIONS':
         # Обработка предварительных запросов
         response = web.Response()
-        response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        await add_cors_headers(response)
         return response
 
     if request.path == '/auth':
@@ -60,16 +59,12 @@ async def jwt_middleware(request, handler):
             request.user = payload
             # Установка заголовков CORS перед обработкой запроса
             response = await handler(request)
-            response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            await add_cors_headers(response)
             return response
 
     # Обработка ошибки авторизации
     response = web.HTTPUnauthorized()
-    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    await add_cors_headers(response)
     return response
 
 
@@ -110,10 +105,15 @@ async def post_auth(request):
 
     else:
         response = web.HTTPUnauthorized()
-    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    await add_cors_headers(response)
+    return response
+
+
+async def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = front_end_ip
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    return response
+
 
 @routes.get('/shedule')
 async def get_shedule(request):
