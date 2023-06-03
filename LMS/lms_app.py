@@ -1,19 +1,14 @@
-import copy
+import datetime
 import json
 import os
 from pathlib import Path
 
 import aiofiles
-import aiohttp.multipart
-import aiohttp_cors
 import asyncpg
-import datetime
-from aiohttp_middlewares import cors_middleware
-
 import bcrypt
 import jwt
 from aiohttp import web
-from aiohttp.web_request import Request
+from aiohttp_middlewares import cors_middleware
 
 routes = web.RouteTableDef()
 front_end_ip = 'http://localhost:3000'
@@ -94,7 +89,10 @@ async def post_auth(request):
         user_type = 'parent'
         password_hash, user_id = parent
     else:
-        return None, False
+        response = web.HTTPUnauthorized()
+        response.text = "Пользователь не найден"
+        await add_cors_headers(response)
+        return response
 
     password_matches = bcrypt.checkpw(metadata['password'].encode('utf-8'), password_hash)
     if password_matches:
@@ -105,6 +103,7 @@ async def post_auth(request):
 
     else:
         response = web.HTTPUnauthorized()
+        response.text = "Неверный пароль"
     await add_cors_headers(response)
     return response
 
