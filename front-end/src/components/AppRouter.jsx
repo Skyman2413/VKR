@@ -46,7 +46,7 @@ const AppRouter = () => {
                                key={routes.path}
                         />
                     )}
-                    <Redirect to='/home'/>
+                    <Redirect to='/get_grades'/>
                 </Switch>
             :
                 <div>

@@ -3,33 +3,25 @@ import {AuthContext} from "../context";
 import MyButton from "../components/UI/MyButton/MyButton";
 import MyInput from "../components/UI/MyInput/MyInput";
 import APIService from "../API/APIService";
+import {useFetching} from "../hook/useFetching";
+import Loader from "../components/UI/Loader/Loader";
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
 
   const { setIsAuth } = useContext(AuthContext);
+  const [fetchLogin, isLoginProcessing, loginError] = useFetching(async (username, password) =>{
+    const response = await APIService.auth(username, password)
+    setIsAuth(true);
+    localStorage.setItem('auth', 'true');
+    localStorage.setItem('authToken', response.data.token);
+    localStorage.setItem('userType', response.data.userType)
 
+  })
   const login = async event => {
     event.preventDefault();
-    setError(null); // сбросить ошибку перед попыткой авторизации
-
-    try {
-      const response = await APIService.auth(username, password)
-
-      if (response.status === 200) {
-        setIsAuth(true);
-        localStorage.setItem('auth', 'true');
-        localStorage.setItem('authToken', response.data.token);
-        localStorage.setItem('userType', response.data.userType)
-      } else {
-        throw new Error('Ошибка авторизации');
-      }
-    } catch (error) {
-      setError('Неправильные логин или пароль');
-      console.error('Ошибка:', error);
-    }
+    await fetchLogin(username, password)
   };
 
   return (
@@ -48,7 +40,12 @@ const Login = () => {
           type="password"
           placeholder="Введите пароль"
         />
-        {error && <div>{error}</div>}
+        {isLoginProcessing &&
+            <div style={{display: 'flex', justifyContent: 'center', marginTop: 50}}><Loader/></div>
+        }
+        {loginError &&
+            <h1>Произошла ошибка ${loginError}</h1>
+        }
         <MyButton>Войти</MyButton>
       </form>
     </div>

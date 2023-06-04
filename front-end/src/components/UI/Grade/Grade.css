@@ -1,0 +1,63 @@
+.grade {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.grade-text {
+    padding: 5px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.grade-text--low {
+    background-color: #DC143C;
+    font-size: 20px;
+    color: #000;
+    border-radius: 10px; /* Закругление краев */
+}
+
+.grade-text--medium {
+    background-color: #FFB800;
+    font-size: 20px;
+    color: #000;
+    border-radius: 10px; /* Закругление краев */
+}
+
+.grade-text--high {
+    background-color: #008000;
+    font-size: 20px;
+    color: #000;
+    border-radius: 10px; /* Закругление краев */
+}
+
+.tooltip {
+    position: relative;
+    margin-left: 10px;
+}
+
+.tooltip-content {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #fff;
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.grade:hover .tooltip-content {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tooltip-content p {
+    margin: 5px 0;
+}

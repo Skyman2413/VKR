@@ -1,0 +1,15 @@
+.grade-line {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.grade-line h2 {
+    margin-right: 10px;
+    width: 150px;
+}
+
+.grades {
+    display: flex;
+}
+

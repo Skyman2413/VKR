@@ -15,6 +15,7 @@ function App() {
             setIsAuth(true);
         }
         setLoading(false)
+        console.log(localStorage.getItem("userType"))
     }, [])
   return (
     <AuthContext.Provider value={{

@@ -27,7 +27,7 @@ async def generate_token(user_id, user_type):
 
 async def verify_token(token):
     try:
-        payload = jwt.decode(token, 'secret', algorithms=['HS256'])
+        payload = jwt.decode(token.replace("Bearer ", ""), 'secret', algorithms=['HS256'])
         return payload
     except jwt.ExpiredSignatureError:
         return None  # token is expired
@@ -44,20 +44,17 @@ async def jwt_middleware(request, handler):
         return response
 
     if request.path == '/auth':
-        # Запрос на авторизацию не требует проверки токена
         return await handler(request)
 
     token = request.headers.get('Authorization', None)
     if token is not None:
-        payload = verify_token(token)
+        payload = await verify_token(token)
         if payload is not None:
             request.user = payload
-            # Установка заголовков CORS перед обработкой запроса
             response = await handler(request)
             await add_cors_headers(response)
             return response
 
-    # Обработка ошибки авторизации
     response = web.HTTPUnauthorized()
     await add_cors_headers(response)
     return response
@@ -90,7 +87,6 @@ async def post_auth(request):
         password_hash, user_id = parent
     else:
         response = web.HTTPUnauthorized()
-        response.text = "Пользователь не найден"
         await add_cors_headers(response)
         return response
 
@@ -138,16 +134,29 @@ async def get_shedule(request):
 async def get_student_grades(request):
     postgres_pool = request.app['postgres']
     student_id = request.user["user_id"]
-    query_str = """SELECT vkr_schema.grades.date, vkr_schema.grades.grade, vkr_schema.grades.grade_type,
+    query_str = """SELECT TO_CHAR(vkr_schema.grades.date, 'DD.MM.YYYY'), vkr_schema.grades.grade, vkr_schema.grades.grade_type,
                    vkr_schema.subjects.subject_name as subject_name
                    FROM vkr_schema.grades 
                    JOIN vkr_schema.subjects ON vkr_schema.grades.subject_id = vkr_schema.subjects.id
                    WHERE vkr_schema.grades.student_id = $1 
                    ORDER BY vkr_schema.grades.date, subject_name"""
     async with postgres_pool.acquire() as postgres_conn:
-        result = await postgres_conn.fetchval(query_str, student_id)
-    to_send = [row for row in result]
-    return web.json_response(dict(grades=to_send))
+        data = await postgres_conn.fetch(query_str, student_id)
+    grouped_data = {}
+    for record in data:
+        subject_name = record['subject_name']
+        grade = record['grade']
+        to_char = record['to_char']
+        grade_type = record['grade_type']
+
+        if subject_name not in grouped_data:
+            grouped_data[subject_name] = []
+
+        grouped_data[subject_name].append({"grade": grade, "date": to_char, "grade_type": grade_type})
+
+    result = [{"subject": subject_name, "grades": grades} for subject_name, grades in grouped_data.items()]
+
+    return web.json_response(dict(grades=result))
 
 
 @routes.put('/create_homework')
