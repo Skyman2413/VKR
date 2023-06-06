@@ -1,12 +1,13 @@
 import React, {useContext} from 'react';
 import {Redirect, Route, Switch} from "react-router-dom"
-import {publicRoutes, parentRoutes, teacherRoutes, studentRoutes} from "../routes";
+import { parentRoutes, teacherRoutes, studentRoutes} from "../routes";
 import {AuthContext} from "../context";
 import Loader from "./UI/Loader/Loader";
 const AppRouter = () => {
     const {isAuth, isLoading} = useContext(AuthContext)
     if (isLoading) {
         return <Loader/>
+
     }
     return (
         isAuth
@@ -26,18 +27,21 @@ const AppRouter = () => {
                 :
             localStorage.getItem("userType") === "teacher"
                 ?
+
                 <Switch>
-                    {teacherRoutes.map(routes =>
-                        <Route component={routes.component}
-                               path={routes.path}
-                               exact={routes.exact}
-                               key={routes.path}
+                    {teacherRoutes.map((route) => (
+                        <Route
+                            component={route.component}
+                            path={route.path}
+                            exact={route.exact}
+                            key={route.path}
                         />
-                    )}
-                    <Redirect to='/home'/>
+                    ))}
+                    <Redirect to="/home" />
                 </Switch>
                 :
-            localStorage.getItem("userType") === "student" ?
+            localStorage.getItem("userType") === "student"
+                ?
                 <Switch>
                     {studentRoutes.map(routes =>
                         <Route component={routes.component}
@@ -46,23 +50,15 @@ const AppRouter = () => {
                                key={routes.path}
                         />
                     )}
-                    <Redirect to='/get_grades'/>
+                    <Redirect to='/home'/>
                 </Switch>
             :
                 <div>
                     Unexcepted user type
                 </div>
             :
-            <Switch>
-                {publicRoutes.map(routes =>
-                    <Route component={routes.component}
-                           path={routes.path}
-                           exact={routes.exact}
-                           key={routes.path}
-                    />
-                )}
-                <Redirect to='/login'/>
-            </Switch>
+
+            <Redirect to='/login'/>
 
     );
 };

@@ -1,0 +1,6 @@
+.grade-cell {
+    cursor: pointer;
+}
+.grade-cell.table-light {
+    background-color: #cccccc !important;
+}

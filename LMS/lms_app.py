@@ -117,13 +117,13 @@ async def get_shedule(request):
     group_name = metadata['group_name']
     query_str = "SELECT vkr_schema.timetable.lesson_number, vkr_schema.subjects.subject_name AS subject_name," \
                 "vkr_schema.teachers.first_name || ' ' || vkr_schema.teachers.last_name AS teacher_name, " \
-                "vkr_schema.timetable.day_of_week " \
+                "vkr_schema.timetable.lesson_date " \
                 "FROM vkr_schema.timetable " \
                 "JOIN vkr_schema.groups ON vkr_schema.timetable.group_id = vkr_schema.groups.id " \
                 "JOIN vkr_schema.subjects ON vkr_schema.timetable.subject_id = vkr_schema.subjects.id " \
                 "JOIN vkr_schema.teachers ON vkr_schema.timetable.teacher_id = vkr_schema.teachers.id " \
                 "WHERE vkr_schema.groups.group_name = $1 " \
-                "ORDER BY vkr_schema.timetable.day_of_week, vkr_schema.timetable.lesson_number;"
+                "ORDER BY vkr_schema.timetable.lesson_date, vkr_schema.timetable.lesson_number;"
     async with postgres_pool.acquire() as postgres_conn:
         result = await postgres_conn.fetch(query_str, group_name)
     timetable = [row for row in result]
@@ -281,6 +281,152 @@ async def put_grade_hm(request):
                                   result['homework_id'])
 
     return web.HTTPOk()
+
+
+@routes.get('/get_groups')
+async def get_groups(request):
+    postgres_pool = request.app['postgres']
+    teacher_id = request.user['user_id']
+    query_str = """ SELECT vkr_schema.groups.group_name, vkr_schema.groups.id
+                    FROM vkr_schema.groups 
+                    WHERE vkr_schema.groups.id =
+                     (SELECT vkr_schema.teachers_groups.group_id
+                      FROM vkr_schema.teachers_groups
+                        WHERE teacher_id = $1)
+                """
+    async with postgres_pool.acquire() as conn:
+        result = await conn.fetch(query_str, teacher_id)
+
+    print(result)
+    to_send = {
+        "groups": [
+            {
+                "id": record['id'],
+                "name": record['group_name']
+            }
+            for record in result
+        ]
+    }
+    return web.json_response(to_send)
+
+
+@routes.post('/get_subjects')
+async def post_get_subjects(request):
+    postgres_pool = request.app['postgres']
+    data = await request.json()
+    group_name = data['group']
+    teacher_id = request.user['user_id']
+    query_str = """SELECT vkr_schema.subjects.subject_name, vkr_schema.subjects.id
+                    FROM vkr_schema.subjects
+                    JOIN vkr_schema.teachers_subjects 
+                        ON subjects.id = vkr_schema.teachers_subjects.subject_id
+                    JOIN vkr_schema.teachers_groups 
+                        ON vkr_schema.teachers_subjects.teacher_id = vkr_schema.teachers_groups.teacher_id
+                    JOIN vkr_schema.groups 
+                        ON vkr_schema.teachers_groups.group_id = groups.id
+                    WHERE vkr_schema.teachers_subjects.teacher_id = $1 AND groups.group_name = $2;
+                """
+    async with postgres_pool.acquire() as conn:
+        result = await conn.fetch(query_str, teacher_id, group_name)
+    to_send = {
+        "subjects": [
+            {
+                "id": record['id'],
+                "name": record['subject_name']
+            }
+            for record in result
+        ]
+    }
+    return web.json_response(to_send)
+
+
+@routes.post('/update_grades')
+async def update_grades(request):
+    postgres_pool = request.app['postgres']
+    data = await request.json()
+    grade = int(data['grade'])
+    comment = data['comment']
+    teacher_id = request.user['user_id']
+    student_id = int(data['studentId'])
+    subject_name = data['subject_name']
+    date = data['date']
+    grade_type = data['grade_type']
+    # Обновляем оценки в базе данных
+    async with postgres_pool.acquire() as conn:
+        await conn.fetch('''
+                INSERT INTO vkr_schema.grades (student_id, date, grade, comment, lesson_id, teacher_id, subject_id, grade_type)
+                VALUES ($1, to_date($2, 'DD.MM.YYYY'), $3, $4, 
+                (SELECT id FROM vkr_schema.timetable where lesson_date = to_date($2, 'DD.MM.YYYY')),
+                 $5, 
+                 (SELECT id FROM vkr_schema.subjects WHERE subject_name =$6),
+                 $7)
+                 
+                ON CONFLICT (student_id, lesson_id, grade_type)
+                DO UPDATE SET grade = $3, comment = $4, teacher_id = $5
+            ''', student_id, date, grade, comment, teacher_id, subject_name, grade_type)
+    return web.Response()
+
+
+@routes.post('/group_grades')
+async def post_get_group_grades(request):
+    postgres_pool = request.app['postgres']
+    data = await request.json()
+    group_name = data['group_name']
+    subject_name = data['subject_name']
+    teacher_id = request.user["user_id"]
+
+    async with postgres_pool.acquire() as conn:
+        subject_id = await conn.fetchval('''
+                SELECT vkr_schema.subjects.id FROM vkr_schema.subjects WHERE vkr_schema.subjects.subject_name = $1
+            ''', subject_name)
+
+    async with postgres_pool.acquire() as conn:
+        group_id = await conn.fetchval('''
+                SELECT id FROM vkr_schema.groups WHERE group_name = $1
+            ''', group_name)
+
+    async with postgres_pool.acquire() as conn:
+        lessons = await conn.fetch('''
+                SELECT vkr_schema.timetable.id, TO_CHAR(vkr_schema.timetable.lesson_date, 'DD.MM.YYYY') as lesson_date
+                FROM vkr_schema.timetable
+                WHERE vkr_schema.timetable.teacher_id = $1 
+                AND vkr_schema.timetable.subject_id = $2 
+                AND vkr_schema.timetable.group_id = $3
+            ''', teacher_id, subject_id, group_id)
+
+    # Получим список студентов группы
+    async with postgres_pool.acquire() as conn:
+        students = await conn.fetch('''
+            SELECT vkr_schema.students.id, 
+            vkr_schema.students.first_name || ' ' || vkr_schema.students.last_name 
+            AS student_name 
+            FROM vkr_schema.students 
+            WHERE vkr_schema.students.group_id = $1
+        ''', group_id)
+
+    # Создадим пустую структуру данных
+    data = {}
+    for student in students:
+        data[student['id']] = {'name': student['student_name']}
+
+    # Заполняем структуру данными об оценках
+    for lesson in lessons:
+        for student_id in data.keys():
+            async with postgres_pool.acquire() as conn:
+                result = await conn.fetch('''
+                        SELECT vkr_schema.grades.grade, vkr_schema.grades.grade_type FROM vkr_schema.grades 
+                        WHERE vkr_schema.grades.student_id = $1 AND vkr_schema.grades.lesson_id = $2
+                    ''', student_id, lesson['id'])
+
+            # Если оценки нет, оставим ячейку пустой
+            for row in result:
+                grade, grade_type = row
+                if grade is None:
+                    grade = ''
+
+                data[student_id][lesson['lesson_date'] + f' {grade_type}' if grade_type else ''] = grade
+
+    return web.json_response(data)
 
 
 async def create_lms_app():
