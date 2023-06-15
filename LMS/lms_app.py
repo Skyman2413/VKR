@@ -1,6 +1,8 @@
 import datetime
 import json
+import logging
 import os
+from os.path import exists
 from pathlib import Path
 
 import aiofiles
@@ -27,7 +29,7 @@ async def generate_token(user_id, user_type):
 
 async def verify_token(token):
     try:
-        payload = jwt.decode(token.replace("Bearer ", ""), 'secret', algorithms=['HS256'])
+        payload = jwt.decode(token, 'secret', algorithms=['HS256'])
         return payload
     except jwt.ExpiredSignatureError:
         return None  # token is expired
@@ -114,6 +116,7 @@ async def add_cors_headers(response):
 async def get_shedule(request):
     postgres_pool = request.app['postgres']
     metadata = await request.json()
+
     group_name = metadata['group_name']
     query_str = "SELECT vkr_schema.timetable.lesson_number, vkr_schema.subjects.subject_name AS subject_name," \
                 "vkr_schema.teachers.first_name || ' ' || vkr_schema.teachers.last_name AS teacher_name, " \
@@ -133,7 +136,12 @@ async def get_shedule(request):
 @routes.get('/student_grades')
 async def get_student_grades(request):
     postgres_pool = request.app['postgres']
-    student_id = request.user["user_id"]
+    if request.user["user_type"] == "student":
+        student_id = request.user["user_id"]
+    else:
+        query_str = "SELECT id FROM vkr_schema.students WHERE parent_id=$1"
+        async with postgres_pool.acquire() as conn:
+            student_id = conn.fetchval(query_str, request.user['user_id'])
     query_str = """SELECT TO_CHAR(vkr_schema.grades.date, 'DD.MM.YYYY'), vkr_schema.grades.grade, vkr_schema.grades.grade_type,
                    vkr_schema.subjects.subject_name as subject_name
                    FROM vkr_schema.grades 
@@ -160,7 +168,7 @@ async def get_student_grades(request):
 
 
 @routes.put('/create_homework')
-async def put_homework(request):
+async def create_homework(request):
     """важно чтобы сначала шла часть с json, а только потом с файлом"""
     postgres_pool = request.app['postgres']
     reader = await request.multipart()
@@ -192,7 +200,7 @@ async def put_homework(request):
         id = await postgres_conn.fetchval(query_str, description, due_data,
                                           user_id,
                                           subject_name, group_name)
-    if metadata['include']:
+    if "include" in metadata.keys():
         field = await reader.next()
         while field:
             if field.name == 'file':
@@ -232,7 +240,7 @@ async def put_done_homework(request):
     while field:
         if field.name == 'file':
             file_extension = os.path.splitext(field.filename)[1]
-            path = Path(os.getcwd(), 'homework_includings', f'student_{hm_id}{file_extension}')
+            path = Path(os.getcwd(), 'homework_includings', f'student_{user_id}_{hm_id}{file_extension}')
             async with aiofiles.open(path, 'wb') as f:
                 while True:
                     chunk = await field.read_chunk()
@@ -423,13 +431,53 @@ async def post_get_group_grades(request):
                 grade, grade_type = row
                 if grade is None:
                     grade = ''
+                    grade_type = "класс"
 
                 data[student_id][lesson['lesson_date'] + f' {grade_type}' if grade_type else ''] = grade
+            if len(result) == 0:
+                data[student_id][lesson['lesson_date']] = ""
 
+    print(data)
     return web.json_response(data)
 
 
+@routes.get('/get_homeworks')
+async def get_gomeworks(request):
+    postgres_pool = request.app['postgres']
+    student_id = request.user["user_id"]
+
+    async with postgres_pool.acquire() as conn:
+        group_id = await conn.fetchval('SELECT group_id FROM vkr_schema.students WHERE id=$1', student_id)
+
+        # Получаем ДЗ для этой группы
+        homeworks = await conn.fetch('SELECT * FROM vkr_schema.homework WHERE group_id=$1', group_id)
+
+        # Преобразуем записи в нужный формат и добавляем информацию о сдаче
+        homework_list = []
+        for hw in homeworks:
+            # Получаем имя предмета
+            subject_name = await conn.fetchval('SELECT subject_name FROM vkr_schema.subjects WHERE id=$1', hw['subject_id'])
+
+            # Проверяем, сдано ли домашнее задание
+            is_submitted = await conn.fetchval(
+                'SELECT COUNT(*) FROM vkr_schema.homeworksubmissions WHERE student_id=$1 AND homework_id=$2', student_id,
+                hw['id']) > 0
+
+            homework_list.append({
+                "id": hw["id"],
+                "description": hw["description"],
+                "due_date": hw["due_date"].isoformat(),
+                "subject": subject_name,
+                "is_submitted": is_submitted,
+                "teacher_file_exists": False
+            })
+
+    return web.json_response({"homeworks": homework_list})
+
+
 async def create_lms_app():
+    logging.basicConfig(level=logging.INFO)
+
     app = web.Application()
     app.add_routes(routes)
     app.middlewares.append(jwt_middleware)

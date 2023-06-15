@@ -5,11 +5,17 @@ import SubjectList from "../components/UI/SubjectList/SubjectList";
 import TeachersGrade from "../pages/TeachersGrade";
 import HomePage from "../pages/Home";
 import CreateHM from "../pages/CreateHM";
+import Login from "../pages/Login";
+import StudentHomeworks from "../pages/StudentHomeworks";
+import HomeworkDetailPage from "../pages/HomeworkDetailPage";
 
 
 export const studentRoutes = [
     {path: '/home', component: HomePage, exact: true},
-    {path: '/grades', component: StudentGrades, exact: true}
+    {path: '/grades', component: StudentGrades, exact: true, name: "Оценки"},
+    {path: '/homeworks', component: StudentHomeworks, exact: true, name: "Домашние задания"},
+    {path: '/homeworks/:id', component: HomeworkDetailPage, exact: true}
+
 ]
 
 export const teacherRoutes = [
@@ -19,7 +25,9 @@ export const teacherRoutes = [
     {path: '/grades/:group', component: SubjectList, exact: true },
     {path: '/grades/:group/:subject', component: TeachersGrade, exact: true }
 ]
-
+export const publicRoutes = [
+    {path: '/login', component: Login, exact: true, name: "Авторизация"},
+]
 export const parentRoutes = [
     {path: '/home', component: HomePage, exact: true, name: "Домашняя страницы"},
     {path: '/document_request', component: About, exact: true, name: "Запрос документов"},
@@ -34,5 +42,7 @@ export const getRoutesByRole = (role) => {
             return teacherRoutes;
         case "parent":
             return parentRoutes;
+        default:
+            return publicRoutes
     }
 }

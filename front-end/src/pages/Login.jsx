@@ -44,7 +44,7 @@ const Login = () => {
             <div style={{display: 'flex', justifyContent: 'center', marginTop: 50}}><Loader/></div>
         }
         {loginError &&
-            <h1>Произошла ошибка ${loginError}</h1>
+            <h1>Неверное имя пользователя или пароль</h1>
         }
         <MyButton>Войти</MyButton>
       </form>

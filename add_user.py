@@ -39,7 +39,8 @@ async def create_connection():
 
 async def main():
     # await create_parent("Учитель", "Учителев", "89999999999", "teacher@mail.ru", "parent", "parent")
-    await create_student("Ученик", "Учеников", "student", "student")
+     await create_student("Ученик", "Второй", "student2", "student2")
+    # await create_parent("Родитель", "Второй", "24512451435", "asdfasd@mas.re", "parent1", "parent1")
 
 
 if __name__ == "__main__":

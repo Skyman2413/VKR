@@ -8,6 +8,8 @@ const Navbar = () => {
     const logout = () => {
         setIsAuth(false);
         localStorage.removeItem('auth')
+        localStorage.removeItem('userType')
+        localStorage.removeItem('authToken')
     }
     return (
         <div className={"navbar"}>

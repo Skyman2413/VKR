@@ -1,6 +1,6 @@
 import React, {useContext} from 'react';
 import {Redirect, Route, Switch} from "react-router-dom"
-import { parentRoutes, teacherRoutes, studentRoutes} from "../routes";
+import {parentRoutes, teacherRoutes, studentRoutes, publicRoutes} from "../routes";
 import {AuthContext} from "../context";
 import Loader from "./UI/Loader/Loader";
 const AppRouter = () => {
@@ -58,7 +58,16 @@ const AppRouter = () => {
                 </div>
             :
 
-            <Redirect to='/login'/>
+            <Switch>
+                {publicRoutes.map(routes =>
+                    <Route component={routes.component}
+                           path={routes.path}
+                           exact={routes.exact}
+                           key={routes.path}
+                    />
+                )}
+                <Redirect to='/login'/>
+            </Switch>
 
     );
 };

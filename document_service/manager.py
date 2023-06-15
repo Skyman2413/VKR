@@ -5,10 +5,53 @@ from pathlib import Path
 import asyncpg
 import datetime
 
+import bcrypt
+import jwt
 from aiohttp import web
+from aiohttp_middlewares import cors_middleware
 
 routes = web.RouteTableDef()
 
+async def verify_token(token):
+    try:
+        payload = jwt.decode(token, 'secret', algorithms=['HS256'])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None  # token is expired
+    except jwt.InvalidTokenError:
+        return None  # token is invalid
+
+
+@web.middleware
+async def jwt_middleware(request, handler):
+
+    if request.method == 'OPTIONS':
+        # Обработка предварительных запросов
+        response = web.Response()
+        await add_cors_headers(response)
+        return response
+
+    if request.path == '/auth':
+        return await handler(request)
+
+    token = request.headers.get('Authorization', None)
+    if token is not None:
+        payload = await verify_token(token)
+        if payload is not None:
+            request.user = payload
+            response = await handler(request)
+            await add_cors_headers(response)
+            return response
+
+    response = web.HTTPUnauthorized()
+    await add_cors_headers(response)
+    return response
+
+
+async def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = "localhost:3000"
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
 
 @routes.post('/enqueue')
 async def enqueue_task(request):
@@ -21,9 +64,7 @@ async def enqueue_task(request):
     document_type = request_data['type']
     status = 'created'
     # TODO сделать получение id userа
-    query_str = "SELECT id FROM vkr_schema.parents where first_name = $1 and last_name = $2"
-    async with postgres_pool.acquire() as postgres_conn:
-        parent_id = await postgres_conn.fetchval(query_str, request_data['first_name'], request_data['last_name'])
+    parent_id = request.user["user_id"]
     data = json.dumps(request_data['data'])
     query_str = "INSERT INTO vkr_schema.documentrequests " \
                 "(request_date, document_type, status, parent_id, data) " \
@@ -31,7 +72,7 @@ async def enqueue_task(request):
                 "on conflict(id) do nothing returning id; "
     async with postgres_pool.acquire() as postgres_conn:
         task_id = await postgres_conn.fetchval(query_str, request_date, document_type, status, parent_id, data)
-    return web.json_response({'task_id': task_id, 'status': 'queued'})
+    return web.json_response({'task_id': task_id, 'status': status})
 
 
 @routes.get('/status')
@@ -84,6 +125,8 @@ async def cleanup(app):
 async def create_manager_app():
     app = web.Application()
     app.add_routes(routes)
+    app.middlewares.append(jwt_middleware)
+    app.middlewares.append(cors_middleware())
     pool = await asyncpg.create_pool(
         host="192.168.3.16",
         port="5432",
